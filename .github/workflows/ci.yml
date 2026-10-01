@@ -1,0 +1,55 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, staging]
+    paths-ignore:
+      - '**/*.md'
+      - '.gitignore'
+      - '.dockerignore'
+  pull_request:
+    branches: [main, staging]
+    paths-ignore:
+      - '**/*.md'
+      - '.gitignore'
+      - '.dockerignore'
+
+jobs:
+  # Unit tests on every push and PR. GitHub-hosted runner.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - uses: actions/setup-python@v5.4.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r hello/requirements.txt httpx pytest
+
+      - name: Unit tests
+        run: cd hello && pytest tests/ -v
+
+  # Push to staging → fires Coolify staging webhook after tests pass.
+  deploy-staging:
+    needs: test
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Coolify staging deploy
+        run: |
+          curl -fsSL -X POST "${{ secrets.COOLIFY_DEPLOY_WEBHOOK_STAGING }}" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}"
+
+  # Push to main → fires Coolify prod webhook after tests pass.
+  deploy-prod:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Coolify prod deploy
+        run: |
+          curl -fsSL -X POST "${{ secrets.COOLIFY_DEPLOY_WEBHOOK_PROD }}" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}"

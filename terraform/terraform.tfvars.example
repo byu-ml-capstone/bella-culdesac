@@ -1,0 +1,97 @@
+# Copy this file to terraform.tfvars and fill in real values.
+# terraform.tfvars is git-ignored - never commit real tokens.
+#
+# Usage:
+#   cp terraform.tfvars.example terraform.tfvars
+#   $EDITOR terraform.tfvars
+#   terraform init
+#   terraform apply
+
+# ---------------------------------------------------------------------------
+# 1) Coolify API token
+# ---------------------------------------------------------------------------
+# Create at https://ml-capstone-admin.cs.byu.edu
+# FIRST switch to your own team in the team switcher -- the token is scoped to
+# whichever team is active when you create it, and that decides where your
+# Applications get created.
+# -> click the Coolify wordmark top-left to go to the instance dashboard
+# -> left sidebar: Keys & Tokens -> API Tokens -> + New Token
+# -> Description: `terraform-lab` (or anything)
+# -> Permissions: check `root`
+#    Coolify's permission boxes are mutually exclusive -- clicking `deploy`
+#    clears the others -- so `write` and `deploy` cannot both be held. Terraform
+#    needs both, and `root` covers them. It means root of YOUR OWN TEAM, not of
+#    the whole instance. If `root` is greyed out you are on a team you are only
+#    a member of; switch to your own team first.
+# -> Click "Create Token" once everything above is filled in.
+# -> Create -> COPY IMMEDIATELY (Coolify shows the token exactly once)
+# -> paste below.
+coolify_token = "REPLACE_ME"
+
+# ---------------------------------------------------------------------------
+# 2) GitHub Personal Access Token
+# ---------------------------------------------------------------------------
+# You need a token with `repo` scope so Terraform can look up your repo AND
+# write GitHub Actions secrets onto it. Two ways to get one:
+#
+# EASY (if you have the GitHub CLI installed):
+#   gh auth token
+# Copy the output. Format is `ghp_...` or `gho_...` (~40 chars).
+#
+# UI PATH (if you don't have `gh`):
+#   1. Log in to github.com
+#   2. Click your avatar (top-right) -> Settings
+#   3. Scroll to the bottom of the left sidebar -> Developer settings
+#   4. Personal access tokens -> Tokens (classic)
+#   5. Generate new token -> Generate new token (classic)
+#   6. Note: `terraform-coolify-lab` (or anything)
+#   7. Expiration: pick something that covers the course. You can generate
+#      another if it lapses -- but avoid "No expiration".
+#   8. Scopes: check the TOP-LEVEL `repo` box (includes all sub-checkboxes)
+#   9. Scroll to bottom -> Generate token
+#  10. COPY IMMEDIATELY (GitHub only shows it once) -> paste below.
+github_token = "REPLACE_ME"
+
+# ---------------------------------------------------------------------------
+# 3) Your repo name -- JUST the repo name, NOT the org prefix.
+# ---------------------------------------------------------------------------
+# If your GitHub repo lives at https://github.com/byu-ml-capstone/qsnell-hello
+# then put ONLY `qsnell-hello` here. The `byu-ml-capstone/` org prefix comes
+# from the `github_org` variable and gets prepended automatically.
+#
+#   Wrong: repo_name = "byu-ml-capstone/qsnell-hello"   <- BAD (doubles up)
+#   Right: repo_name = "qsnell-hello"                    <- GOOD
+#
+# This value is also used as your Coolify Project name and the base for
+# staging + prod domains:
+#   staging: http://<repo_name>-staging.ml-capstone.cs.byu.edu
+#   prod:    http://<repo_name>.ml-capstone.cs.byu.edu
+repo_name = "REPLACE_ME"
+
+# ---------------------------------------------------------------------------
+# 4) Your Coolify server UUID -- REQUIRED, and specific to YOUR team
+# ---------------------------------------------------------------------------
+# Coolify gives each team its own server record. They are all named
+# `ml-capstone` and they all point at the same physical machine, but each has a
+# different UUID -- so there is no value that works for everyone.
+#
+# Look yours up with the token you pasted above:
+#
+#   curl -H "Authorization: Bearer <your-token>" \
+#     https://ml-capstone-admin.cs.byu.edu/api/v1/servers
+#
+# Exactly one server comes back. Copy its `uuid` here.
+coolify_server_uuid = "REPLACE_ME"
+
+# ---------------------------------------------------------------------------
+# 5) (Optional) Overrides for forking to a different setup
+# ---------------------------------------------------------------------------
+# Everything below has a default matching the BYU ml-capstone class, so
+# class students don't need to touch any of it. Uncomment + change only
+# if you're using this template outside the class (different GitHub org,
+# your own Coolify install, different wildcard domain, etc.).
+#
+# github_org              = "byu-ml-capstone"
+# coolify_endpoint        = "https://ml-capstone-admin.cs.byu.edu/api/v1"
+# app_domain_base         = "ml-capstone.cs.byu.edu"
+# coolify_github_app_uuid = "onb2ftjqxx6lxxqwa20ku6ve"

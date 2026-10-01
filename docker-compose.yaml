@@ -1,0 +1,121 @@
+services:
+  hello:
+    build: ./hello
+    # `expose:` documents the container's internal port WITHOUT binding it to
+    # a host port. Do NOT use `ports:` here — the shared cluster server only
+    # lets ONE container own each host port at a time, and Coolify's Traefik
+    # routes traffic over the internal `coolify` Docker network anyway.
+    #
+    # For LOCAL development, `docker-compose.override.yml` (auto-merged by
+    # `docker compose up`) adds a host port binding so browsers/curls on
+    # your laptop can reach the app. Coolify uses `-f docker-compose.yaml`
+    # explicitly, so the override is invisible in production.
+    expose:
+      - "8000"
+    environment:
+      # Coolify magic: REFERENCING ${SERVICE_FQDN_HELLO} anywhere in this
+      # file tells Coolify to (1) populate that variable with the
+      # Application's configured domain, (2) attach this service to the
+      # `coolify` Docker network, and (3) auto-generate Traefik labels
+      # routing the domain to this service. The magic is triggered by
+      # INTERPOLATION, not by declaring the var — a bare
+      # `- SERVICE_FQDN_HELLO_8000` crashes Coolify's parser with
+      # "no service selected".
+      #
+      # The variable name follows the service name: SERVICE_FQDN_<UPPER>.
+      # Since this service is `hello`, the var is SERVICE_FQDN_HELLO. If
+      # you rename the service, rename the var to match.
+      #
+      # APP_URL is arbitrary — Coolify only cares that ${SERVICE_FQDN_HELLO}
+      # appears. Handing it to APP_URL lets the container read its own
+      # public URL for building absolute links / callbacks.
+      - APP_URL=${SERVICE_FQDN_HELLO}
+      # Postgres connection string. Uses the compose service DNS name `db`
+      # as the hostname (see the `db:` service below).
+      - DATABASE_URL=postgresql://appuser:apppass@db:5432/appdb
+    depends_on:
+      time:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      # Probe often while starting, rarely once healthy. `start_interval`
+      # applies during `start_period`, so a fresh container is detected healthy
+      # within a few seconds; after that the steady-state `interval` takes over.
+      # Without this split you either wait 30s to learn a deploy worked, or you
+      # poll forever at startup speed and fill the logs for no reason.
+      start_period: 30s
+      start_interval: 2s
+      interval: 5m
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # Second service — a stand-in for the kind of sidecar you'd add for real
+  # work (background worker, local ML model server, etc.). This one serves
+  # the current UTC time; `hello` reaches it at http://time:8001 over the
+  # Compose network. INTERNAL ONLY — no ${SERVICE_FQDN_TIME}, so Coolify
+  # won't route Traefik to it.
+  time:
+    build: ./time
+    expose:
+      - "8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health').read()"]
+      # `hello` waits on this via depends_on: service_healthy, so it needs to go
+      # healthy fast — hence start_interval — but nothing needs a reading every
+      # 30s for the rest of the container's life.
+      start_period: 20s
+      start_interval: 2s
+      interval: 5m
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # Third service — a real Postgres database with persistent storage.
+  # `hello` reaches it at postgresql://...@db:5432/... over the Compose
+  # network. INTERNAL ONLY.
+  #
+  # Stock postgres:16-alpine image, no customization. The database
+  # container is a generic storage service — it doesn't know anything
+  # about the app's schema. The app owns the schema and materializes it
+  # into this database via its startup lifespan hook (see hello/main.py).
+  # Same pattern as Django, Rails, and modern FastAPI + Alembic apps.
+  #
+  # db-data (bottom of file) is the named volume that makes data survive
+  # `docker compose down`, redeploys, and host reboots.
+  #
+  # Coolify per-Application isolation: staging and production each get
+  # their OWN db-data volume — they do NOT share the database. That's the
+  # correct default (never mix staging data with prod data). If you need
+  # to move data between environments, use `pg_dump` and `psql < dump`.
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=appuser
+      - POSTGRES_PASSWORD=apppass
+      - POSTGRES_DB=appdb
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      # This was the noisiest of the three: pg_isready every 5 seconds, forever.
+      # Postgres still has to be confirmed ready quickly, because `hello` blocks
+      # on it via depends_on — start_interval does that without the steady-state
+      # cost. 5s -> 5m is roughly 17,000 fewer probes per container per day.
+      start_period: 30s
+      start_interval: 2s
+      interval: 5m
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  # Named volume. Docker keeps this in its managed storage on the host disk
+  # (/var/lib/docker/volumes on Linux). Survives container recreation,
+  # image rebuilds, and host reboots. Only removed by:
+  #   - `docker compose down -v` (the -v is the "delete volumes" flag)
+  #   - `docker volume rm hello-world-app_db-data` (name is project-prefixed)
+  #   - Deleting the Application in Coolify with the "delete volumes" box.
+  db-data:
