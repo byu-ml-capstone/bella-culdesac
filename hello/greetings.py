@@ -7,7 +7,7 @@ a bigger example: it splits into config, schemas, llm_client, local_classifier,
 and device — main.py just wires them together.
 """
 
-APP_VERSION = "0.1.1"
+APP_VERSION = "0.1.2"
 
 GREETINGS = {
     "en": "Hello, world",
