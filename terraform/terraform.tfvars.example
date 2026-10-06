@@ -26,7 +26,7 @@
 # -> Click "Create Token" once everything above is filled in.
 # -> Create -> COPY IMMEDIATELY (Coolify shows the token exactly once)
 # -> paste below.
-coolify_token = "REPLACE_ME"
+coolify_token = "14|d8xDChU2AKDK4iutOW8lhPk1fqmK0nVTsAmUIRB243cac521"
 
 # ---------------------------------------------------------------------------
 # 2) GitHub Personal Access Token
