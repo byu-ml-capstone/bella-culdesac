@@ -1,0 +1,2 @@
+ALTER TABLE workflow_templates ADD COLUMN IF NOT EXISTS setup_steps JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE workflow_templates ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;

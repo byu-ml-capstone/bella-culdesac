@@ -5,13 +5,17 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy every top-level Python module — main.py imports from greetings.py,
-# and as students add more modules the glob picks them up automatically.
+# Copy the application modules. As the service grows, modules remain beside
+# main.py so the container image stays self-contained.
 COPY *.py ./
 
-# Schema migration SQL files. Applied by notes_dao.apply_migrations() on
-# app startup — see the lifespan hook in main.py.
+# Schema migration SQL files. Applied by the application migration runner
+# during startup.
 COPY migrations/ ./migrations/
+COPY tests/ ./tests/
+COPY static/ ./static/
+
+RUN mkdir -p /app/storage/attachments
 
 EXPOSE 8000
 
