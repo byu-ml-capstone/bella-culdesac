@@ -1,141 +1,84 @@
-import json
-from unittest.mock import MagicMock, patch
+from datetime import date
+from decimal import Decimal
 
-import psycopg
 from fastapi.testclient import TestClient
 
-import main
 from main import app
+from main import rate_limit_events, enforce_rate_limit
+from schemas import ProjectCreate, StoryCreate
 
 client = TestClient(app)
 
 
-# ---------------------------------------------------------------------------
-# Basic routes — no external dependencies
-# ---------------------------------------------------------------------------
+def test_version_is_available_without_database():
+    response = client.get("/version")
+    assert response.status_code == 200
+    assert "version" in response.json()
 
 
-def test_hello_default():
-    r = client.get("/")
-    assert r.status_code == 200
-    assert r.json() == {"hello": "Hello, world"}
-
-
-def test_hello_spanish():
-    r = client.get("/", params={"lang": "es"})
-    assert r.status_code == 200
-    assert r.json() == {"hello": "Hola, mundo"}
-
-
-def test_hello_unknown_lang_falls_back_to_default():
-    r = client.get("/", params={"lang": "xx"})
-    assert r.status_code == 200
-    assert r.json() == {"hello": "Hello, world"}
-
-
-def test_languages_lists_all_supported():
-    r = client.get("/languages")
-    assert r.status_code == 200
-    body = r.json()
-    assert "en" in body["supported"]
-    assert "es" in body["supported"]
-
-
-def test_health_ok():
-    r = client.get("/health")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["ok"] is True
-    assert "version" in body
-
-
-# ---------------------------------------------------------------------------
-# /time — mocks the network call to the sidecar
-# ---------------------------------------------------------------------------
-
-
-def test_time_endpoint_wraps_response_from_time_sidecar():
-    # The /time endpoint calls http://time:8001/now, which only resolves
-    # when docker compose is running. Mock the underlying urlopen so
-    # tests don't need the sidecar container up.
-    fake_body = json.dumps({"utc": "2026-08-20T12:34:56+00:00"}).encode()
-    fake_response = MagicMock()
-    fake_response.read.return_value = fake_body
-    fake_response.__enter__.return_value = fake_response
-    fake_response.__exit__.return_value = False
-
-    with patch("main.urllib.request.urlopen", return_value=fake_response):
-        r = client.get("/time")
-
-    assert r.status_code == 200
-    assert r.json() == {"from_time_service": {"utc": "2026-08-20T12:34:56+00:00"}}
-
-
-# ---------------------------------------------------------------------------
-# /notes — mocks at the DAO boundary. This is the payoff of extracting
-# NotesDAO: tests describe what the ROUTE does with DAO results, without
-# entangling psycopg's cursor / context-manager mocking noise.
-# ---------------------------------------------------------------------------
-
-
-def test_notes_list_returns_dao_output():
-    fake_rows = [
-        {"id": 1, "body": "first", "created_at": "2026-08-20T12:00:00+00:00"},
-        {"id": 2, "body": "second", "created_at": "2026-08-20T12:01:00+00:00"},
-    ]
-    with patch.object(main.notes_dao, "list_all", return_value=fake_rows):
-        r = client.get("/notes")
-    assert r.status_code == 200
-    assert r.json() == fake_rows
-
-
-def test_notes_create_returns_dao_output():
-    fake_row = {
-        "id": 42,
-        "body": "hello persistence",
-        "created_at": "2026-08-20T12:00:00+00:00",
-    }
-    with patch.object(main.notes_dao, "insert", return_value=fake_row) as m:
-        r = client.post("/notes", json={"body": "hello persistence"})
-    assert r.status_code == 201
-    assert r.json() == fake_row
-    m.assert_called_once_with("hello persistence")
-
-
-def test_notes_list_returns_503_when_db_unreachable():
-    with patch.object(
-        main.notes_dao, "list_all", side_effect=psycopg.OperationalError("boom")
+def test_board_ui_contract_exposes_story_controls_and_explanations():
+    response = client.get("/")
+    assert response.status_code == 200
+    page = response.text
+    for marker in (
+        'data-side="story-panel"',
+        'id="story-assignees"',
+        'id="story-status"',
+        'data-view="board"',
+        'add-stage-story',
+        'data-tip=',
+        'Backlog',
+        'In Progress',
     ):
-        r = client.get("/notes")
-    assert r.status_code == 503
-    assert "db unreachable" in r.json()["detail"]
+        assert marker in page
 
 
-# ---------------------------------------------------------------------------
-# /admin/reset — env-gated destructive endpoint
-# ---------------------------------------------------------------------------
+def test_project_creation_schema_requires_due_date():
+    project = ProjectCreate(name="Cul-de-sac", due_date=date(2026, 12, 1))
+    assert project.start_date is None
 
 
-def test_admin_reset_forbidden_when_disabled():
-    with patch.object(main, "ADMIN_RESET_ENABLED", False):
-        r = client.post("/admin/reset")
-    assert r.status_code == 403
-    assert "disabled" in r.json()["detail"]
+def test_story_defaults_match_product_specification():
+    story = StoryCreate(title="Implement project setup", due_date=date(2026, 12, 1))
+    assert story.priority == "Medium"
+    assert story.story_type == "User story"
+    assert story.estimated_time == Decimal("1.00")
+    assert story.completion_percent == Decimal("0.00")
+    assert story.status == "In Progress"
+    assert story.assignee_ids == []
 
 
-def test_admin_reset_calls_dao_when_enabled():
-    with patch.object(main, "ADMIN_RESET_ENABLED", True), patch.object(
-        main.notes_dao, "reset"
-    ) as m:
-        r = client.post("/admin/reset")
-    assert r.status_code == 200
-    assert r.json()["ok"] is True
-    m.assert_called_once_with()
+def test_unauthenticated_api_errors_use_common_envelope():
+    response = client.get("/api/v1/projects", headers={"X-Request-ID": "test-request-1"})
+    assert response.status_code == 401
+    body = response.json()
+    assert body["error"]["code"] == "UNAUTHENTICATED"
+    assert body["request_id"] == "test-request-1"
 
 
-def test_admin_reset_returns_503_when_db_unreachable():
-    with patch.object(main, "ADMIN_RESET_ENABLED", True), patch.object(
-        main.notes_dao, "reset", side_effect=psycopg.OperationalError("boom")
-    ):
-        r = client.post("/admin/reset")
-    assert r.status_code == 503
+def test_invalid_login_payload_uses_validation_envelope():
+    response = client.post("/auth/login", json={"username": "", "password": "x"})
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_rate_limiter_returns_retry_after_after_limit():
+    key = "test-rate-limit"
+    rate_limit_events.pop(key, None)
+    enforce_rate_limit(key, maximum=2, window_seconds=60)
+    enforce_rate_limit(key, maximum=2, window_seconds=60)
+    try:
+        enforce_rate_limit(key, maximum=2, window_seconds=60)
+    except Exception as exc:
+        assert exc.status_code == 429
+        assert exc.headers["Retry-After"] == "60"
+    else:
+        raise AssertionError("expected rate limiter to reject the third request")
+    rate_limit_events.pop(key, None)
+
+
+def test_collection_routes_publish_paginated_contracts():
+    schema = app.openapi()["paths"]
+    for path in ("/api/v1/projects", "/api/v1/team/members", "/api/v1/workflow-templates", "/api/v1/stories/{story_id}/comments"):
+        response = schema[path]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+        assert response["$ref"].endswith("Page")

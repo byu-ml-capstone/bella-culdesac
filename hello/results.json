@@ -1,0 +1,25 @@
+{
+    "tests": [
+        {
+            "score": 0,
+            "max_score": 0,
+            "name": "test_api.py::test_version_is_available_without_database",
+            "output": "\n",
+            "visibility": "visible"
+        },
+        {
+            "score": 0,
+            "max_score": 0,
+            "name": "test_api.py::test_project_creation_schema_requires_due_date",
+            "output": "\n",
+            "visibility": "visible"
+        },
+        {
+            "score": 0,
+            "max_score": 0,
+            "name": "test_api.py::test_story_defaults_match_product_specification",
+            "output": "\n",
+            "visibility": "visible"
+        }
+    ]
+}

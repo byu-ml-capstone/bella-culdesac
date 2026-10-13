@@ -7,11 +7,7 @@
 #      on your laptop can reach it. In production, Traefik handles domain
 #      routing and no host-port binding is needed (or desired — see the
 #      ports vs expose note in docker-compose.yaml).
-#   2. Enable the destructive /admin/reset endpoint so you can wipe the
-#      notes table during local dev without needing to set env vars by
-#      hand. In production it's off by default; students enable it in
-#      Coolify's Environment Variables UI when they need to reset, then
-#      remove the env var afterward.
+#   2. Enable the destructive /admin/reset endpoint during local development.
 #
 # `smoke-test.sh` also exports SERVICE_FQDN_HELLO before running compose
 # so the interpolation of ${SERVICE_FQDN_HELLO} in the main file doesn't
@@ -23,3 +19,5 @@ services:
       - "8000:8000"
     environment:
       - ALLOW_ADMIN_RESET=true
+      - APP_ENV=local
+      - AI_PROVIDER=mock
