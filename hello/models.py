@@ -202,6 +202,7 @@ class Sprint(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
     goal: Mapped[str] = mapped_column(String(1000))
+    scope: Mapped[str | None] = mapped_column(String(1000))
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(20), default="planned", index=True)
