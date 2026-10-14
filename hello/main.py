@@ -471,7 +471,7 @@ def promote_idea(idea_id: UUID, payload: IdeaPromotion, member: TeamMember = Dep
     template = db.get(WorkflowTemplate, payload.workflow_template_id) if payload.workflow_template_id else db.scalar(select(WorkflowTemplate).where(WorkflowTemplate.name == "Standard Sprint"))
     if payload.workflow_template_id and not template:
         raise HTTPException(status_code=422, detail="workflow template not found")
-    project = Project(name=payload.name, description=idea.description, vision=payload.vision, scope=payload.scope, start_date=start_date, due_date=due_date, workflow_template_id=template.id if template else None, workflow_statuses=list(template.statuses) if template else None)
+    project = Project(name=payload.name, description=payload.description if payload.description is not None else idea.description, vision=payload.vision, scope=payload.scope, start_date=start_date, due_date=due_date, workflow_template_id=template.id if template else None, workflow_statuses=list(template.statuses) if template else None)
     db.add(project)
     db.flush()
     idea.status = "promoted"
@@ -917,6 +917,20 @@ def archive_project(project_id: UUID, _member: TeamMember = Depends(require_edit
     if project.status != "complete":
         raise HTTPException(status_code=409, detail="only completed projects can be archived")
     project.status = "archived"
+    project.version += 1
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+@app.post("/api/v1/projects/{project_id}/reopen", response_model=ProjectResponse)
+def reopen_project(project_id: UUID, _member: TeamMember = Depends(require_editor), db: Session = Depends(get_db)):
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="project not found")
+    if project.status != "archived":
+        raise HTTPException(status_code=409, detail="only archived projects can be reopened")
+    project.status = "active"
     project.version += 1
     db.commit()
     db.refresh(project)
@@ -1437,6 +1451,7 @@ def create_sprint(project_id: UUID, payload: SprintCreate, _member: TeamMember =
     sprint = Sprint(
         project_id=project_id,
         goal=payload.goal,
+        scope=payload.scope,
         start_date=payload.start_date,
         end_date=payload.end_date,
         workflow_template_id=template_id,

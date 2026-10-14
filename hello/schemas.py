@@ -148,6 +148,7 @@ class StoryResponse(BaseModel):
 
 class SprintCreate(BaseModel):
     goal: str = Field(min_length=1, max_length=1000)
+    scope: str | None = Field(default=None, max_length=1000)
     start_date: date
     end_date: date
     workflow_template_id: UUID | None = None
@@ -155,6 +156,7 @@ class SprintCreate(BaseModel):
 
 class SprintUpdate(BaseModel):
     goal: str | None = Field(default=None, min_length=1, max_length=1000)
+    scope: str | None = Field(default=None, max_length=1000)
     start_date: date | None = None
     end_date: date | None = None
     status: str | None = None
@@ -184,6 +186,7 @@ class SprintResponse(BaseModel):
     id: UUID
     project_id: UUID
     goal: str
+    scope: str | None
     start_date: date
     end_date: date
     status: str
@@ -419,6 +422,7 @@ class IdeaResponse(BaseModel):
 
 class IdeaPromotion(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
     vision: str | None = Field(default=None, max_length=1000)
     scope: str | None = Field(default=None, max_length=1000)
     due_date: date | None = None
