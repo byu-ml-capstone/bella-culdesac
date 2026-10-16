@@ -79,6 +79,7 @@ from schemas import (
     PasswordResetLinkResponse,
     PasswordResetRequest,
     IdeaConversion,
+    IdeaSprintConversion,
     IdeaCreate,
     IdeaPromotion,
     IdeaResponse,
@@ -488,7 +489,7 @@ def convert_idea_to_story(idea_id: UUID, payload: IdeaConversion, _member: TeamM
     project = db.get(Project, payload.project_id)
     if not idea or not project:
         raise HTTPException(status_code=404, detail="idea or project not found")
-    if idea.scope != "project" or idea.project_id != project.id:
+    if idea.scope == "project" and idea.project_id != project.id:
         raise HTTPException(status_code=422, detail="project idea must belong to the selected project")
     if idea.status in {"converted", "promoted"}:
         raise HTTPException(status_code=409, detail="idea has already been converted")
@@ -503,6 +504,37 @@ def convert_idea_to_story(idea_id: UUID, payload: IdeaConversion, _member: TeamM
     db.commit()
     db.refresh(story)
     return story
+
+
+@app.post("/api/v1/ideas/{idea_id}/convert-to-sprint", response_model=SprintResponse, status_code=201)
+def convert_idea_to_sprint(idea_id: UUID, payload: IdeaSprintConversion, _member: TeamMember = Depends(require_editor), db: Session = Depends(get_db)):
+    idea = db.get(Idea, idea_id)
+    project = db.get(Project, payload.project_id)
+    if not idea or not project:
+        raise HTTPException(status_code=404, detail="idea or project not found")
+    if idea.scope == "project" and idea.project_id != project.id:
+        raise HTTPException(status_code=422, detail="project idea must belong to the selected project")
+    if idea.status in {"converted", "promoted"}:
+        raise HTTPException(status_code=409, detail="idea has already been converted")
+    start_date = payload.start_date or today()
+    end_date = payload.end_date or (start_date + timedelta(days=14))
+    if end_date < start_date:
+        raise HTTPException(status_code=422, detail="end_date cannot precede start_date")
+    sprint = Sprint(
+        project_id=project.id,
+        goal=payload.goal or idea.title,
+        scope=payload.scope if payload.scope is not None else idea.description,
+        start_date=start_date,
+        end_date=end_date,
+        workflow_template_id=project.workflow_template_id,
+    )
+    db.add(sprint)
+    db.flush()
+    idea.status = "converted"
+    idea.version += 1
+    db.commit()
+    db.refresh(sprint)
+    return sprint
 
 
 @app.post("/api/v1/team/members/{member_id}/password-reset-link", response_model=PasswordResetLinkResponse)
@@ -673,6 +705,8 @@ def update_conversation(conversation_id: UUID, payload: ConversationUpdate, _mem
         raise HTTPException(status_code=404, detail="conversation not found")
     if conversation.version != payload.version:
         raise HTTPException(status_code=409, detail="conversation was changed by another user")
+    if conversation.created_by != _member.id and _member.role != "Team Lead":
+        raise HTTPException(status_code=403, detail="only the discussion author or a Team Lead may edit it")
     changes = payload.model_dump(exclude_unset=True, exclude={"version"})
     if changes.get("status") not in {None, "active", "archived"}:
         raise HTTPException(status_code=422, detail="invalid conversation status")
