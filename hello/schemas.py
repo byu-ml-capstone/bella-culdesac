@@ -436,6 +436,14 @@ class IdeaConversion(BaseModel):
     due_date: date | None = None
 
 
+class IdeaSprintConversion(BaseModel):
+    project_id: UUID
+    goal: str | None = Field(default=None, min_length=1, max_length=1000)
+    scope: str | None = Field(default=None, max_length=1000)
+    start_date: date | None = None
+    end_date: date | None = None
+
+
 class ConversationCreate(BaseModel):
     scope: str
     project_id: UUID | None = None
